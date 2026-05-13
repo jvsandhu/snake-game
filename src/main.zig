@@ -14,7 +14,9 @@ const CELL: i32 = 28;
 const HUD: i32 = 56;
 const WIN_W: i32 = COLS * CELL;
 const WIN_H: i32 = ROWS * CELL + HUD;
-const TICK_MS: i32 = 160;
+const TIMER_MS: i32 = 16;
+const BASE_INTERVAL: i32 = 160;
+const MIN_INTERVAL: i32 = 50;
 const TIMER_ID: usize = 1;
 
 const Dir = enum { up, down, left, right };
@@ -27,7 +29,12 @@ const Game = struct {
     next_dir: Dir,
     food: Pos,
     score: i32,
+    high_score: i32,
     game_over: bool,
+    paused: bool,
+    wrap: bool,
+    difficulty_ramp: bool,
+    elapsed: i32,
 
     fn init(alloc: std.mem.Allocator) Game {
         var body = std.ArrayList(Pos).init(alloc);
@@ -42,7 +49,12 @@ const Game = struct {
             .next_dir = .right,
             .food = .{ .x = mx + 3, .y = my },
             .score = 0,
+            .high_score = 0,
             .game_over = false,
+            .paused = false,
+            .wrap = false,
+            .difficulty_ramp = false,
+            .elapsed = 0,
         };
     }
 
@@ -54,18 +66,30 @@ const Game = struct {
         return self.snake.items[0];
     }
 
+    fn getMoveInterval(self: Game) i32 {
+        if (!self.difficulty_ramp) return BASE_INTERVAL;
+        return @max(MIN_INTERVAL, BASE_INTERVAL - self.score * 5);
+    }
+
     fn update(self: *Game) void {
         self.dir = self.next_dir;
         const h = self.head();
-        const n = switch (self.dir) {
+        var n = switch (self.dir) {
             .up => Pos{ .x = h.x, .y = h.y - 1 },
             .down => Pos{ .x = h.x, .y = h.y + 1 },
             .left => Pos{ .x = h.x - 1, .y = h.y },
             .right => Pos{ .x = h.x + 1, .y = h.y },
         };
-        if (n.x < 0 or n.x >= COLS or n.y < 0 or n.y >= ROWS) {
-            self.game_over = true;
-            return;
+        if (self.wrap) {
+            if (n.x < 0) n.x = COLS - 1;
+            if (n.x >= COLS) n.x = 0;
+            if (n.y < 0) n.y = ROWS - 1;
+            if (n.y >= ROWS) n.y = 0;
+        } else {
+            if (n.x < 0 or n.x >= COLS or n.y < 0 or n.y >= ROWS) {
+                self.game_over = true;
+                return;
+            }
         }
         for (self.snake.items) |p| {
             if (p.x == n.x and p.y == n.y) {
@@ -117,6 +141,8 @@ const Game = struct {
         self.food = .{ .x = mx + 3, .y = my };
         self.score = 0;
         self.game_over = false;
+        self.paused = false;
+        self.elapsed = 0;
     }
 };
 
@@ -126,12 +152,23 @@ fn wndProc(hwnd: win.HWND, msg: win.UINT, wParam: win.WPARAM, lParam: win.LPARAM
             const create: *win.CREATESTRUCTA = @ptrFromInt(@as(usize, @intCast(lParam)));
             const game_ptr: *Game = @ptrCast(@alignCast(create.lpCreateParams.?));
             _ = win.SetWindowLongPtrA(hwnd, win.GWLP_USERDATA, @as(win.LONG_PTR, @intCast(@intFromPtr(game_ptr))));
-            _ = win.SetTimer(hwnd, TIMER_ID, TICK_MS, null);
+            _ = win.SetTimer(hwnd, TIMER_ID, TIMER_MS, null);
             return 0;
         },
         win.WM_TIMER => {
             const game: *Game = @ptrFromInt(@as(usize, @intCast(win.GetWindowLongPtrA(hwnd, win.GWLP_USERDATA))));
-            if (!game.game_over) game.update();
+            if (!game.game_over and !game.paused) {
+                game.elapsed += TIMER_MS;
+                const interval = game.getMoveInterval();
+                while (game.elapsed >= interval) {
+                    game.elapsed -= interval;
+                    game.update();
+                    if (game.game_over) {
+                        if (game.score > game.high_score) game.high_score = game.score;
+                        break;
+                    }
+                }
+            }
             _ = win.InvalidateRect(hwnd, null, win.TRUE);
             return 0;
         },
@@ -147,6 +184,15 @@ fn wndProc(hwnd: win.HWND, msg: win.UINT, wParam: win.WPARAM, lParam: win.LPARAM
                         game.reset();
                         _ = win.InvalidateRect(hwnd, null, win.TRUE);
                     }
+                },
+                'P', 'p' => {
+                    if (!game.game_over) game.paused = !game.paused;
+                },
+                'O', 'o' => {
+                    if (!game.game_over) game.wrap = !game.wrap;
+                },
+                'I', 'i' => {
+                    if (!game.game_over) game.difficulty_ramp = !game.difficulty_ramp;
                 },
                 else => {},
             }
@@ -221,11 +267,25 @@ fn drawGame(hwnd: win.HWND, hdc: win.HDC, game: *Game) void {
         _ = win.FillRect(hdc, &r, brush);
     }
 
-    var buf: [64]u8 = std.mem.zeroes([64]u8);
-    const text = std.fmt.bufPrint(&buf, "Score: {d}", .{game.score}) catch buf[0..0];
     _ = win.SetBkMode(hdc, win.TRANSPARENT);
     _ = win.SetTextColor(hdc, 0x00FFFFFF);
+
+    var buf: [128]u8 = std.mem.zeroes([128]u8);
+    const text = std.fmt.bufPrint(&buf, "Score: {d}  Hi: {d}", .{ game.score, game.high_score }) catch buf[0..0];
     _ = win.TextOutA(hdc, ox + 10, oy + 14, text.ptr, @as(i32, @intCast(text.len)));
+
+    if (game.wrap or game.difficulty_ramp) {
+        var mx = ox + WIN_W - 120;
+        _ = win.SetTextColor(hdc, 0x00888888);
+        if (game.wrap) {
+            _ = win.TextOutA(hdc, mx, oy + 14, "WRAP", 4);
+            mx += 48;
+        }
+        if (game.difficulty_ramp) {
+            _ = win.TextOutA(hdc, mx, oy + 14, "RAMP", 4);
+        }
+        _ = win.SetTextColor(hdc, 0x00FFFFFF);
+    }
 
     if (game.game_over) {
         const msg = "GAME OVER - press R or SPACE to restart";
@@ -235,6 +295,16 @@ fn drawGame(hwnd: win.HWND, hdc: win.HDC, game: *Game) void {
         const y = @divFloor(height - sz.cy, 2);
         _ = win.SetTextColor(hdc, 0x000000AA);
         _ = win.TextOutA(hdc, x, y, msg, @as(i32, @intCast(msg.len)));
+        _ = win.SetTextColor(hdc, 0x00FFFFFF);
+    } else if (game.paused) {
+        const msg = "PAUSED - press P to resume";
+        var sz: win.SIZE = undefined;
+        _ = win.GetTextExtentPoint32A(hdc, msg, @as(i32, @intCast(msg.len)), &sz);
+        const x = @divFloor(width - sz.cx, 2);
+        const y = @divFloor(height - sz.cy, 2);
+        _ = win.SetTextColor(hdc, 0x00AAAAAA);
+        _ = win.TextOutA(hdc, x, y, msg, @as(i32, @intCast(msg.len)));
+        _ = win.SetTextColor(hdc, 0x00FFFFFF);
     }
 }
 
