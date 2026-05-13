@@ -138,10 +138,10 @@ fn wndProc(hwnd: win.HWND, msg: win.UINT, wParam: win.WPARAM, lParam: win.LPARAM
         win.WM_KEYDOWN => {
             const game: *Game = @ptrFromInt(@as(usize, @intCast(win.GetWindowLongPtrA(hwnd, win.GWLP_USERDATA))));
             switch (wParam) {
-                win.VK_UP => { if (game.dir != .down) game.next_dir = .up; },
-                win.VK_DOWN => { if (game.dir != .up) game.next_dir = .down; },
-                win.VK_LEFT => { if (game.dir != .right) game.next_dir = .left; },
-                win.VK_RIGHT => { if (game.dir != .left) game.next_dir = .right; },
+                'W', win.VK_UP => { if (game.dir != .down) game.next_dir = .up; },
+                'S', win.VK_DOWN => { if (game.dir != .up) game.next_dir = .down; },
+                'A', win.VK_LEFT => { if (game.dir != .right) game.next_dir = .left; },
+                'D', win.VK_RIGHT => { if (game.dir != .left) game.next_dir = .right; },
                 'R', 'r', win.VK_SPACE => {
                     if (game.game_over) {
                         game.reset();
