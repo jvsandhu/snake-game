@@ -34,8 +34,34 @@ Pre-built binaries are available on the [Releases page](https://github.com/jvsan
 
 Eat food, grow longer, don't hit walls or yourself.
 
-**Wrap mode** — snake exits one side and enters the other (no wall deaths).  
-**Ramp mode** — speed increases as your score goes up (starts at 160ms, caps at 50ms per tick).
+## Features
+
+**Wrap mode** — toggle with `O`. Snake exits one side and enters the
+other. No wall deaths — the only way to die is to eat yourself.
+
+**Ramp mode** — toggle with `I`. Speed increases as your score goes
+up. Starts at 160ms per tick, caps at 50ms.
+
+**High score** — persisted to `snake.hs` in the same directory as the
+executable. Survives restarts.
+
+**Input buffering** — up to 2 direction changes are queued per tick.
+Fast taps never get lost, even during a single tick.
+
+**Tail gradient** — head is bright green, body smoothly fades to
+dark green toward the tail.
+
+**Double buffering** — all rendering happens off-screen, then blits
+to the window in one shot. Zero flicker.
+
+**Death reason** — the game over screen tells you whether you hit
+a wall or ate yourself.
+
+**Death flash** — brief red flash on death for visual feedback.
+
+**Playfield border** — white outline around the grid.
+
+**Window centering** — automatically centered on screen at launch.
 
 ## Specs
 
@@ -44,8 +70,8 @@ Grid:          20 x 20
 Cell:          28 px
 Base tick:     160 ms
 Render tick:   16 ms (60 FPS)
-High score:    tracked per session
-Window:        fixed-size, GUI subsystem
+High score:    persisted to snake.hs
+Window:        fixed-size, centered, GUI subsystem
 Binary:        ~34 KB (ReleaseSmall)
 ```
 
