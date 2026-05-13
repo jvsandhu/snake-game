@@ -1,0 +1,12 @@
+.{
+    .name = .snake_game,
+    .version = "0.1.0",
+    .fingerprint = 0x1fb09c82d74d9f6e,
+    .minimum_zig_version = "0.14.0",
+    .dependencies = .{},
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}
